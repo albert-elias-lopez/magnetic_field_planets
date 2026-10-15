@@ -170,12 +170,14 @@ def printMagnitudes(planet,            # String for the directory name
     
     Phi, Theta = np.meshgrid(360 * (1 - phi / 2 / np.pi), 
                              - 180 * theta / np.pi + 90)
+    # The curvature is in units of 1/R_P (1/R_J for Jupiter)
+    curvature_unit = "R_J" if planet.startswith("Jupiter") else "R_P"
     names = [r'$\nabla \cdot B h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
              r'$|\nabla \times B|h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
              r'$(\nabla \times B)_r h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
              r'$(\nabla \times B)_\theta h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
              r'$(\nabla \times B)_\phi h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
-             r'$|\kappa| \, \mathrm{(1/R_J) \, at} \, r = \, $' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$']
+             r'$|\kappa| \, \mathrm{(1/' + curvature_unit + r') \, at} \, r = \, $' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$']
     files = [planet+ '_r_' + rc_file +'_div',
              planet+ '_r_' + rc_file+'_curl_mod',
              planet+ '_r_' + rc_file+'_curlr',

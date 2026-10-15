@@ -87,8 +87,9 @@ def check_latex():
         report("PASS", "LaTeX", shutil.which("latex"))
     else:
         report("FAIL", "LaTeX", "installed but it cannot render a plot, so the plots will "
-                                "crash (check texlive-latex-extra, texlive-fonts-recommended, "
-                                "dvipng, cm-super and the permissions of ~/.cache/matplotlib)")
+                                "crash: use --no-latex in the scripts, or check "
+                                "texlive-latex-extra, texlive-fonts-recommended, dvipng, "
+                                "cm-super and the permissions of ~/.cache/matplotlib")
 
 # ffmpeg joins the movie frames in a movie file (it is not needed otherwise)
 def check_ffmpeg():

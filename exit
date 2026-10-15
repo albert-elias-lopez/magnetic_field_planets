@@ -1,0 +1,109 @@
+[33mcommit 448fcef59abce7a3133033fef2c0e77e78dca378[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: Albert Elias <albertel1996@gmail.com>
+Date:   Thu Oct 15 12:08:13 2026 +0200
+
+    structural improvements
+
+[33mcommit 026c629663e07501f8433c15029ec320cad81816[m
+Author: Albert Elias <albertel1996@gmail.com>
+Date:   Thu Oct 15 10:55:26 2026 +0200
+
+    Add an environment check and physics and smoke tests
+    
+    - setup.py checks Python, numpy, matplotlib, cartopy and its coastlines,
+      LaTeX (that it renders), ffmpeg and the data tables, can install the
+      missing packages (--install), and then runs test.py
+    - test.py physics tests: Schmidt polynomials (formulas, derivatives and
+      normalization up to degree 30), dipole and external uniform field,
+      B = -grad V, div B = 0, grid against point-by-point sums, Lowes spectrum
+      (dipole and mean square field), published coefficients and the surface
+      field of every planet
+    - test.py smoke tests run main.py for all planets, the movie scripts and
+      the csv/vtu/curl outputs with a small grid in a temporary folder
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 14e642063e214aec4dbf4d17ef68704742ab6484[m
+Author: Albert Elias <albertel1996@gmail.com>
+Date:   Thu Oct 15 10:55:26 2026 +0200
+
+    Ignore the .nono-flags sandbox file
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 69c5d654c63743b212133bc35a33403bb5d996f8[m
+Author: Albert Elias <albertel1996@gmail.com>
+Date:   Thu Oct 15 10:55:26 2026 +0200
+
+    Add a script to remake the Jupiter movie
+    
+    Remakes the JRM33 (n <= 18) radial movie from r = 2.0 to 0.8 RJ, its
+    reverse, and the static Jupiter maps.
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 30b3c54ddaa05f1486210c08d628269555383dd5[m
+Author: Albert Elias <albertel1996@gmail.com>
+Date:   Thu Oct 15 10:55:26 2026 +0200
+
+    Vectorize the field calculation and add command-line options
+    
+    - schmidt.py: potentialfunction computes the whole (r, theta, phi) grid at
+      once with matrix products instead of a Python loop over every point, the
+      external field uses the same function (external=True) and totalfield
+      adds internal and external fields and the modulus
+    - reader.py: one generic read_table for all the tables, paths relative to
+      the code (it can run from any folder), planet_settings with the size,
+      default degree and units of each model, and the choice of the maximum
+      degree and of the external field
+    - Cartesian components and Brms are vectorized (Brms is now the true root
+      mean square, and fieldx/fieldy used phi[j] instead of phi[k])
+    - main.py, main_movie.py and main_movie_Earth.py take the planet, year,
+      radius/radii, number of multipoles, external field, resolution, title
+      and magnitude as arguments, with copy-paste examples in --help
+    - The movie scripts print the ffmpeg commands for the movie and its
+      reverse
+    - README updated with the new options
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit b237702c8be3935e3a3f6306a85440633955c7da[m
+Author: Albert Elias <albertel1996@gmail.com>
+Date:   Thu Oct 15 10:55:26 2026 +0200
+
+    Vectorize the csv output and fix the vtu file
+    
+    - csv files are written with numpy for all planets (they were only named
+      for Earth and Jupiter, the others went to error.csv)
+    - The vtu file is valid: XML header, B at the points and averaged in the
+      cells, vectorized connectivity, and a message when Nr < 2 (no cells)
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 74b812cd1c08f454776a2ca129479d18e4b487f5[m
+Author: Albert Elias <albertel1996@gmail.com>
+Date:   Thu Oct 15 10:55:26 2026 +0200
+
+    Unify the plotting code and restyle the plots
+    
+    - saveplots.py: one draw() function for the plane and Mollweide maps of
+      plot_all and plot_1, LaTeX fonts (latex_fonts, with a fallback when LaTeX
+      is not installed), symmetric color scales for signed magnitudes, color
+      bars ending in triangles without overlapping end ticks, optional titles,
+      and a bottom color bar option for the movies
+    - Declination and inclination use arctan2 (full -180 to 180 degree range)
+      with a cyclic colormap for the declination
+    - Folders are created with os.makedirs instead of try/except, and the
+      movie frames can be saved in any folder
+    - lowes_spec.py: x-axis fitted to the number of multipoles instead of a
+      hardcoded Jupiter_2021 range
+    - magnitudes.py: matplotlib.colormaps instead of the removed cm.get_cmap,
+      curl written with \times and color bars ending in triangles
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit cab3e5408d2d2803a12341af782b24cf9b8b192d[m[33m ([m[1;31morigin/main[m[33m)[m
+Author: Albert Elias <albertel1996@gmail.com>
+Date:   Wed May 13 11:17:19 2026 +0200
+
+    add all

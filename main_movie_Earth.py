@@ -32,12 +32,13 @@ parser = argparse.ArgumentParser(
            "  python main_movie_Earth.py --nmax 8\n"
            "  python main_movie_Earth.py --ntheta 150\n"
            "  python main_movie_Earth.py --magnitude fieldmod\n"
+           "  python main_movie_Earth.py --lowes-units nT --no-latex\n"
            "\n"
            "full examples (all the options):\n"
            "  python main_movie_Earth.py --first-year 1900 --last-year 2020 --rc 1.0 --nmax 13 "
-           "--ntheta 50 --magnitude fieldr\n"
+           "--ntheta 50 --magnitude fieldr --lowes-units nT\n"
            "  python main_movie_Earth.py --first-year 1950 --last-year 2020 --rc 0.55 --nmax 8 "
-           "--ntheta 150 --magnitude fieldmod")
+           "--ntheta 150 --magnitude fieldmod --no-latex")
 # Years of the movie (the IGRF table has 1900, 1905, ..., 2020)
 parser.add_argument("--first-year", type=int, default=1900, choices=reader.EARTH_YEARS,
                     metavar="YEAR", help="first year, 1900, 1905, ..., 2020 (default: 1900)")
@@ -60,7 +61,17 @@ parser.add_argument("--ntheta", type=int, default=50, metavar="N",
 # or its modulus.
 parser.add_argument("--magnitude", default="fieldr", choices=MAGNITUDES,
                     help="magnitude to plot (default: fieldr)")
+# Units of the Lowes spectrum: G^2 like the rest of the plots, or nT^2 as in
+# many papers
+parser.add_argument("--lowes-units", choices=["G", "nT"], default="G",
+                    help="units of the Lowes spectrum, G^2 or nT^2 (default: G)")
+# Switch to use the Computer Modern fonts of matplotlib instead of LaTeX
+# (faster, and LaTeX does not need to be installed)
+parser.add_argument("--no-latex", dest="latex", action="store_false",
+                    help="use the matplotlib fonts instead of LaTeX (faster, LaTeX is "
+                         "not needed)")
 args = parser.parse_args()
+if args.nmax is not None and args.nmax < 1: parser.error("--nmax must be at least 1")
 if args.first_year > args.last_year: parser.error("--first-year must be before --last-year")
 if args.ntheta < 3: parser.error("--ntheta must be at least 3")
 if args.rc <= 0: parser.error("--rc must be positive")
@@ -120,9 +131,9 @@ plt.rcParams['figure.figsize'] = (12, 8)
 plt.rcParams['font.size'] = 16
 plt.rcParams['lines.linewidth'] = 1
 plt.rcParams["figure.autolayout"] = True
-# LaTeX fonts (usetex=False uses the Computer Modern fonts of matplotlib,
+# LaTeX fonts (--no-latex uses the Computer Modern fonts of matplotlib,
 # which is faster and does not need LaTeX installed)
-saveplots.latex_fonts(usetex=True)
+saveplots.latex_fonts(usetex=args.latex)
 
 #----------------------------------------------------------------------------
 
@@ -176,9 +187,9 @@ for frame, year in enumerate(years):
 
     # Obtain the Lowes spectrum for a the given plotted radius and plot it
     if lowes:
-        Rn = lowes_spec.lowes_spec(NPOL, rc, g, h)
+        Rn = lowes_spec.lowes_spec(NPOL, rc, g, h, const, args.lowes_units)
         lowes_spec.plot_lowes(planet, rc, frame, Rn, movie=True, year=year, years=True,
-                             folder=folder)
+                             folder=folder, units=args.lowes_units)
     
     
 print("------------------------------------------------------------")

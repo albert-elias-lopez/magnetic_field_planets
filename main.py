@@ -35,13 +35,15 @@ parser = argparse.ArgumentParser(
            "  python main.py --planet Jupiter_2021 --title\n"
            "  python main.py --planet Earth --year 1950 --title \"Earth 1950\"\n"
            "  python main.py --planet Saturn --title '$\\mathrm{Saturn \\, (Cassini)}$'\n"
+           "  python main.py --planet Jupiter_2021 --lowes-units nT\n"
+           "  python main.py --planet Saturn --no-latex\n"
            "\n"
            "full examples (all the options):\n"
            "  python main.py --planet Earth --year 1980 --rc 0.55 --nmax 8 --ntheta 200 "
-           "--title '$\\mathrm{Earth \\, 1980 \\, (n \\leq 8)}$'\n"
+           "--lowes-units nT --title '$\\mathrm{Earth \\, 1980 \\, (n \\leq 8)}$'\n"
            "  python main.py --planet Jupiter_2021 --rc 0.85 --nmax 18 --no-external --ntheta 300 "
-           "--title '$\\mathrm{Jupiter \\, (JRM33, \\, n \\leq 18)}$'\n"
-           "  python main.py --planet Mercury --rc 1.0 --nmax 3 --no-external --ntheta 150 --title")
+           "--lowes-units nT --title '$\\mathrm{Jupiter \\, (JRM33, \\, n \\leq 18)}$'\n"
+           "  python main.py --planet Mercury --rc 1.0 --nmax 3 --no-external --ntheta 150 --title --no-latex")
 # Planet (or satellite) to choose. Raw data is located in folder data/
 parser.add_argument("--planet", default="Earth", choices=reader.PLANET_NAMES,
                     help="planet or satellite (default: Earth)")
@@ -72,8 +74,18 @@ parser.add_argument("--title", nargs="?", const="", default=None, metavar="TEXT"
 parser.add_argument("--ntheta", type=int, default=100, metavar="N",
                     help="latitudinal grid points, the longitudinal ones are 2N "
                          "(default: 100)")
+# Units of the Lowes spectrum: G^2 like the rest of the plots, or nT^2 as in
+# many papers
+parser.add_argument("--lowes-units", choices=["G", "nT"], default="G",
+                    help="units of the Lowes spectrum, G^2 or nT^2 (default: G)")
+# Switch to use the Computer Modern fonts of matplotlib instead of LaTeX
+# (faster, and LaTeX does not need to be installed)
+parser.add_argument("--no-latex", dest="latex", action="store_false",
+                    help="use the matplotlib fonts instead of LaTeX (faster, LaTeX is "
+                         "not needed)")
 args = parser.parse_args()
 if args.ntheta < 3: parser.error("--ntheta must be at least 3")
+if args.nmax is not None and args.nmax < 1: parser.error("--nmax must be at least 1")
 
 planet, rc, nmax, external = args.planet, args.rc, args.nmax, args.external
 Ntheta = args.ntheta  # Latitudinal points (North-South direction)
@@ -176,13 +188,36 @@ fieldx = cosphi * sintheta * fieldr + cosphi * costheta * fieldtheta - sinphi * 
 fieldy = sinphi * sintheta * fieldr + sinphi * costheta * fieldtheta + cosphi * fieldphi
 fieldz = costheta * fieldr - sintheta * fieldtheta
 
-# Root mean square of |B| over the sphere r = radius[0] (the last phi point is
-# the same as the first one, so it is not included)
-weights = np.sin(theta)[:, None] * np.ones(Nphi - 1)
-brms = np.sqrt(np.sum(weights * fieldmod[0, :, :-1] ** 2) / np.sum(weights))
+# Values at the sphere r = rc: root mean square of |B| from the multipolar sum
+# (the sum of the Lowes spectrum is the mean of |B|^2 over the sphere, exact
+# and independent of the grid, internal field only) and maximum of |B| on the
+# grid, strength of the dipole (n = 1) and axial dipole (n = 1, m = 0) fields
+# at the equator and the dipole fraction, the first term of the Lowes spectrum
+# over its sum
+i_rc = np.argmin(np.abs(radius - rc))
+brms = np.sqrt(np.sum(lowes_spec.lowes_spec(NPOL, rc, g, h, const, "G")))
+bmax = np.max(fieldmod[i_rc])
+Rn = lowes_spec.lowes_spec(NPOL, rc, g, h, const, args.lowes_units)
+bdip, bdip_axi = lowes_spec.dipole_field(rc, g, h, const)
+fdip = Rn[1] / np.sum(Rn)
+# Dipole fraction up to degree 13 (the usual one in the literature, since the
+# crustal field dominates above it on Earth). Only for the tables that reach
+# degree 13 (Earth and Jupiter_2021), read again so it does not depend on --nmax
+if reader.planet_settings(planet, 13)[0] == 14:
+    g13, h13, _, _ = reader.reader(planet, year, 14, 0)
+    Rn13 = lowes_spec.lowes_spec(14, rc, g13, h13, const)
+    fdip13 = Rn13[1] / np.sum(Rn13)
+else: fdip13 = None
 if print_bcomponents:
-    print("Brms: " + str(brms))
-    print("Bmax: " + str(np.max(fieldmod)))
+    print("------------------------------------------------------------")
+    print("Field at r = %.3f R_P" % rc)
+    print("  Brms     = %.6f G   (internal field, sqrt of the sum of R_n)" % brms)
+    print("  Bmax     = %.6f G" % bmax)
+    print("  Bdip     = %.6f G   (dipole at the magnetic equator, n = 1)" % bdip)
+    print("  Bdip_axi = %.6f G   (axial dipole at the equator, n = 1, m = 0)" % bdip_axi)
+    print("  f_dip    = %.6f     (R_1 / sum of R_n of the Lowes spectrum)" % fdip)
+    if fdip13 is not None:
+        print("  f_dip_13 = %.6f     (R_1 / sum of R_n up to n = 13)" % fdip13)
 
 #----------------------------------------------------------------------------
 # Prints a cvs files with all calculated spherical quantities
@@ -220,9 +255,9 @@ plt.rcParams['figure.figsize'] = (14, 7)
 plt.rcParams['font.size'] = 25
 plt.rcParams['lines.linewidth'] = 1
 plt.rcParams["figure.autolayout"] = True
-# LaTeX fonts (usetex=False uses the Computer Modern fonts of matplotlib,
+# LaTeX fonts (--no-latex uses the Computer Modern fonts of matplotlib,
 # which is faster and does not need LaTeX installed)
-saveplots.latex_fonts(usetex=True)
+saveplots.latex_fonts(usetex=args.latex)
 
 print("------------------------------------------------------------")
 print("Saving plots for " + planet + " r = " + str(rc))
@@ -282,22 +317,15 @@ if plot_magnitudes: magnitudes.printMagnitudes(planet,
                                                Mollweide=True)
 
 # Obtain the Lowes spectrum for a the given plotted radius and plot it
-if lowes:
-    Rn = lowes_spec.lowes_spec(NPOL, rc, g, h)
-    fdip = Rn[1]/np.sum(Rn)
-    print("fdip at rc " + str(rc))
-    print(fdip)
-    lowes_spec.plot_lowes(planet, rc, rc_file, Rn)
+if lowes: lowes_spec.plot_lowes(planet, rc, rc_file, Rn, units=args.lowes_units)
 
 # Obtian many Lowes spectrum ad different radii and plot them
 if multiple_lowes_r:
     Rn = np.zeros([len(lowes_radii), NPOL])
     for r in range(0,len(lowes_radii)):
-        Rn[r,:] = lowes_spec.lowes_spec(NPOL, lowes_radii[r], g, h)
-        fdip = Rn[r,1]/np.sum(Rn[r,:])
-        print("fdip at rc " + str(lowes_radii[r]))
-        print(fdip)
-    lowes_spec.plot_multiple_lowes(planet, lowes_radii, Rn)
+        Rn[r,:] = lowes_spec.lowes_spec(NPOL, lowes_radii[r], g, h, const, args.lowes_units)
+        print("f_dip(r = %.2f R_P) = %.6f" % (lowes_radii[r], Rn[r,1]/np.sum(Rn[r,:])))
+    lowes_spec.plot_multiple_lowes(planet, lowes_radii, Rn, units=args.lowes_units)
 
 print("------------------------------------------------------------")
 print("------------  Created by: Albert Elias-López  --------------")

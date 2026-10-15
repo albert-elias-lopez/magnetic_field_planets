@@ -202,13 +202,17 @@ def test_grid_matches_point_by_point():
                             [V[i, j, k], Br[i, j, k], Bt[i, j, k], Bp[i, j, k]],
                             [v, br, bt, bp], rtol=1e-11, atol=1e-9)
 
-# Lowes spectrum of a dipole: R1 = 2 g10^2 / r^6
+# Lowes spectrum of a dipole: R1 = 2 g10^2 / r^6, in G^2 or nT^2 (the table
+# is in nT, const = 1e5)
 def test_lowes_dipole():
     g, h = np.zeros([3, 3]), np.zeros([3, 3])
     g[1, 0] = 410244.7
     for r in [0.8, 1., 2.]:
-        Rn = lowes_spec.lowes_spec(3, r, g, h)
-        check_close("Rn(r=%g)" % r, Rn, [0, 2 * g[1, 0] ** 2 / r ** 6, 0])
+        R1 = 2 * g[1, 0] ** 2 / r ** 6
+        check_close("Rn(r=%g) in G^2" % r, lowes_spec.lowes_spec(3, r, g, h, 1e5), [0, R1 / 1e10, 0])
+        check_close("Rn(r=%g) in nT^2" % r, lowes_spec.lowes_spec(3, r, g, h, 1e5, "nT"), [0, R1, 0])
+        # Uranus and Neptune tables are already in gauss (const = 1)
+        check_close("Rn(r=%g) from G" % r, lowes_spec.lowes_spec(3, r, g * 1e-5, h, 1., "nT"), [0, R1, 0])
 
 # The sum of the Lowes spectrum is the mean of |B|^2 over the sphere
 def test_lowes_is_mean_square_field():
@@ -219,8 +223,30 @@ def test_lowes_is_mean_square_field():
     phi = 2 * np.pi * np.arange(Nphi) / Nphi
     Bmod = field(r, theta, phi, g, h, const=const)[4][0]
     mean_B2 = np.sum(w[:, None] * Bmod ** 2) / (2 * Nphi)
-    Rn = lowes_spec.lowes_spec(nmax + 1, r, g, h)
-    check_close("<B^2>", mean_B2 * const ** 2, np.sum(Rn), rtol=1e-10)
+    Rn = lowes_spec.lowes_spec(nmax + 1, r, g, h, const)
+    check_close("<B^2>", mean_B2, np.sum(Rn), rtol=1e-10)
+
+# Bdip and Bdip_axi are the n = 1 field (all m) and its m = 0 part at the
+# magnetic equator: the minimum of |B| over the sphere, and the rms over the
+# sphere divided by sqrt(2)
+def test_dipole_strength():
+    r, const = 0.85, 1e5
+    g, h = random_coefficients(5, seed=8)
+    theta, w = gauss_theta(12)
+    phi = 2 * np.pi * np.arange(16) / 16
+    rms = lambda gg, hh: np.sqrt(np.sum(w[:, None] * field(r, theta, phi, gg, hh, const=const)[4][0] ** 2) / 32)
+    bdip, bdip_axi = lowes_spec.dipole_field(r, g, h, const)
+    gd, hd = np.zeros([2, 2]), np.zeros([2, 2])
+    gd[1], hd[1] = g[1, :2], h[1, :2]
+    check_close("Bdip", bdip, rms(gd, hd) / np.sqrt(2))
+    dense = field(r, np.linspace(1e-3, np.pi - 1e-3, 721), np.linspace(0, 2 * np.pi, 1441), gd, hd, const=const)[4]
+    check_close("Bdip (equator)", bdip, dense.min(), rtol=1e-4)
+    hd[1], gd[1, 1] = 0, 0
+    check_close("Bdip_axi", bdip_axi, rms(gd, hd) / np.sqrt(2))
+    # Jupiter (JRM33) surface dipole: 4.2 G
+    NPOL, NPOL_EXT, const = reader.planet_settings("Jupiter_2021")
+    g, h, _, _ = reader.reader("Jupiter_2021", None, NPOL, NPOL_EXT)
+    assert 4.1 < lowes_spec.dipole_field(1., g, h, const)[0] < 4.3
 
 # The tables are read correctly (some published coefficients, in nT)
 def test_reader_known_coefficients():
@@ -290,6 +316,7 @@ PHYSICS_TESTS = [test_schmidt_low_degrees,
                  test_grid_matches_point_by_point,
                  test_lowes_dipole,
                  test_lowes_is_mean_square_field,
+                 test_dipole_strength,
                  test_reader_known_coefficients,
                  test_reader_all_planets,
                  test_surface_field_all_planets,
@@ -312,18 +339,14 @@ def latex_works():
         return False
     return result.returncode == 0
 
-# Runs a script as python script.py args in folder. With usetex=False the
-# scripts use the Computer Modern fonts of matplotlib instead of LaTeX
+# Runs python script.py args in folder. With usetex=False the scripts use the
+# Computer Modern fonts of matplotlib instead of LaTeX (--no-latex)
 def run_script(script, args, folder, usetex):
-    wrapper = ("import sys, runpy; sys.path.insert(0, %r); import saveplots;"
-               "latex_fonts = saveplots.latex_fonts;"
-               "saveplots.latex_fonts = lambda usetex=True: latex_fonts(usetex=usetex and %r);"
-               "sys.argv = [%r] + %r;"
-               "runpy.run_path(%r, run_name='__main__')"
-               % (REPO, usetex, script, args, os.path.join(REPO, script)))
-    env = dict(os.environ, MPLBACKEND="Agg")
-    result = subprocess.run([sys.executable, "-c", wrapper], cwd=folder, env=env,
-                            capture_output=True, text=True)
+    if not usetex and script in ["main.py", "main_movie.py", "main_movie_Earth.py"]:
+        args = args + ["--no-latex"]
+    env = dict(os.environ, MPLBACKEND="Agg", PYTHONPATH=REPO)
+    result = subprocess.run([sys.executable, os.path.join(REPO, script)] + args, cwd=folder,
+                            env=env, capture_output=True, text=True)
     if result.returncode != 0:
         lines = result.stderr.strip().splitlines() or ["no error message"]
         return "python %s %s\n  -> %s" % (script, " ".join(args), lines[-1])
@@ -344,7 +367,7 @@ def smoke_main(folder, usetex):
     for planet in reader.PLANET_NAMES:
         args = ["--planet", planet, "--ntheta", "16"]
         if planet == "Earth": args += ["--year", "1950", "--title", "--rc", "0.9"]
-        if planet == "Jupiter_2021": args += ["--nmax", "18", "--no-external"]
+        if planet == "Jupiter_2021": args += ["--nmax", "18", "--no-external", "--lowes-units", "nT"]
         commands.append(("main.py", args))
     run_scripts(commands, folder, usetex)
     # Plane and Mollweide maps of 7 magnitudes (11 for Earth) and the Lowes spectrum
@@ -354,7 +377,7 @@ def smoke_main(folder, usetex):
 
 def smoke_movies(folder, usetex):
     run_scripts([("main_movie.py", ["--planet", "Jupiter_2021", "--frames", "2", "--ntheta", "16",
-                                    "--rmin", "0.9", "--rmax", "1.1"]),
+                                    "--rmin", "0.9", "--rmax", "1.1", "--lowes-units", "nT"]),
                  ("main_movie.py", ["--planet", "Earth", "--year", "1950", "--frames", "2",
                                     "--ntheta", "16", "--magnitude", "fieldmod", "--no-title"]),
                  ("main_movie.py", ["--planet", "Mercury", "--external", "--frames", "1",
@@ -388,7 +411,7 @@ saveoutput.savevtu(3, Ntheta, Nphi, radius, phi, theta, Br, Bt, Bp, planet, 2020
 magnitudes.printMagnitudes(planet, Ntheta, Nphi, radius, rc, "1_00", dr, phi, theta,
                            Br, Bt, Bp, Bmod, plane=True, Mollweide=True)
 radii = np.array([1.2, 1.0, 0.8])
-lowes_spec.plot_multiple_lowes(planet, radii, np.array([lowes_spec.lowes_spec(NPOL, r, g, h) for r in radii]))
+lowes_spec.plot_multiple_lowes(planet, radii, np.array([lowes_spec.lowes_spec(NPOL, r, g, h, const) for r in radii]))
 """ % usetex
     script = os.path.join(folder, "other_outputs.py")
     with open(script, "w") as file:

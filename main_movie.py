@@ -36,14 +36,15 @@ parser = argparse.ArgumentParser(
            "  python main_movie.py --planet Jupiter_2021 --frames 25 --ntheta 60\n"
            "  python main_movie.py --planet Jupiter_2021 --no-title\n"
            "  python main_movie.py --planet Saturn --title '$\\mathrm{Saturn \\, (Cassini)}$'\n"
+           "  python main_movie.py --planet Jupiter_2021 --lowes-units nT --no-latex\n"
            "\n"
            "full examples (all the options):\n"
            "  python main_movie.py --planet Jupiter_2021 --nmax 18 --no-external --rmin 0.8 --rmax 2.0 "
-           "--frames 241 --ntheta 180 --magnitude fieldr --title '$\\mathrm{Jupiter \\, (JRM33, \\, n \\leq 18)}$'\n"
+           "--frames 241 --ntheta 180 --magnitude fieldr --lowes-units nT --title '$\\mathrm{Jupiter \\, (JRM33, \\, n \\leq 18)}$'\n"
            "  python main_movie.py --planet Earth --year 2020 --nmax 13 --rmin 0.55 --rmax 1.3 "
            "--frames 151 --ntheta 120 --magnitude fieldmod --no-title\n"
            "  python main_movie.py --planet Mercury --nmax 3 --external --rmin 0.9 --rmax 1.5 "
-           "--frames 61 --ntheta 100 --magnitude fieldtheta")
+           "--frames 61 --ntheta 100 --magnitude fieldtheta --no-latex")
 # Planet (or satellite) to choose. Raw data is located in folder data/
 parser.add_argument("--planet", default="Jupiter_2021", choices=reader.PLANET_NAMES,
                     help="planet or satellite (default: Jupiter_2021)")
@@ -85,7 +86,17 @@ title.add_argument("--title", metavar="TEXT",
                    help="title of the plots (default: the planet name and maximum degree)")
 title.add_argument("--no-title", dest="show_title", action="store_false",
                    help="do not show a title on the plots")
+# Units of the Lowes spectrum: G^2 like the rest of the plots, or nT^2 as in
+# many papers
+parser.add_argument("--lowes-units", choices=["G", "nT"], default="G",
+                    help="units of the Lowes spectrum, G^2 or nT^2 (default: G)")
+# Switch to use the Computer Modern fonts of matplotlib instead of LaTeX
+# (faster, and LaTeX does not need to be installed)
+parser.add_argument("--no-latex", dest="latex", action="store_false",
+                    help="use the matplotlib fonts instead of LaTeX (faster, LaTeX is "
+                         "not needed)")
 args = parser.parse_args()
+if args.nmax is not None and args.nmax < 1: parser.error("--nmax must be at least 1")
 if args.ntheta < 3: parser.error("--ntheta must be at least 3")
 if args.frames < 1: parser.error("--frames must be at least 1")
 if not 0 < args.rmin <= args.rmax: parser.error("the radii must be 0 < --rmin <= --rmax")
@@ -169,9 +180,9 @@ plt.rcParams['figure.figsize'] = (12, 8)
 plt.rcParams['font.size'] = 16
 plt.rcParams['lines.linewidth'] = 1
 plt.rcParams["figure.autolayout"] = True
-# LaTeX fonts (usetex=False uses the Computer Modern fonts of matplotlib,
+# LaTeX fonts (--no-latex uses the Computer Modern fonts of matplotlib,
 # which is faster and does not need LaTeX installed)
-saveplots.latex_fonts(usetex=True)
+saveplots.latex_fonts(usetex=args.latex)
 
 # This function defines the Gaussian-normalized and the Schmidt quasi-normalized
 # associated Legendre polynomials for the given theta resolution
@@ -222,8 +233,9 @@ for frame, radii in enumerate(rc):
 
     # Obtain the Lowes spectrum for a the given plotted radius and plot it
     if lowes:
-        Rn = lowes_spec.lowes_spec(NPOL, radii, g, h)
-        lowes_spec.plot_lowes(planet, radii, frame, Rn, movie=True, folder=folder)
+        Rn = lowes_spec.lowes_spec(NPOL, radii, g, h, const, args.lowes_units)
+        lowes_spec.plot_lowes(planet, radii, frame, Rn, movie=True, folder=folder,
+                              units=args.lowes_units)
 
     
 print("------------------------------------------------------------")
