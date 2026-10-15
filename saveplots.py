@@ -79,7 +79,11 @@ def draw(planet,
         transform = {}
         pad = .15
     if modulus:
-        levels = np.linspace(np.min(magnitude), np.max(magnitude), 31)
+        # The levels are widened by 1e-9 of the range: when a whole row has
+        # exactly the minimum or maximum (e.g. |B| of the axisymmetric Saturn
+        # field), cartopy fails to project the empty contours of the Mollweide map
+        margin = 1e-9 * (np.max(magnitude) - np.min(magnitude))
+        levels = np.linspace(np.min(magnitude) - margin, np.max(magnitude) + margin, 31)
     else:
         limit = np.max(np.absolute(magnitude))
         levels = np.linspace(-limit, limit, 31)
