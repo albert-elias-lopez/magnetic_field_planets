@@ -77,75 +77,69 @@ def Schmidtcoefficients(NPOL,
 
 # ---------------------------------------------------------------------------
 # This function creates the potential spherical harmonic expansion for the 
-# magnetic field and its components, for one valur of r, thera and phi. This
-# it needs to loop for all degree and order of the Schimdt polynomials. 
-# It needs as an input a specific r, theta, phi of a grid, and a the Schmidt
-# quasi-normalized Legendre polynomials for the same grid. This function 
-# needs to be looped trough all the grid to obtain a complete map. The
-# expressions can also be found in docs/
+# magnetic field and its components on the whole (r, theta, phi) grid at once,
+# summing over all degrees and orders of the Schmidt polynomials. It needs the
+# Schmidt quasi-normalized Legendre polynomials for the same theta grid. The
+# expressions can also be found in docs/. With external=True the expansion
+# for external sources is used (G and H), where the radial dependence is r^n
+# instead of r^-(n+1). The output arrays have dimension [Nr, Ntheta, Nphi].
 # ---------------------------------------------------------------------------
 def potentialfunction(radius, 
-                      ntheta, 
-                      phi, 
                       theta, 
+                      phi, 
                       NPOL, 
                       P, 
                       derivP, 
                       const,
                       g, 
-                      h):
-    poten, fr, ftheta, fphi = 0, 0, 0, 0
+                      h,
+                      external=False):
+    radius = np.atleast_1d(radius)[:, None, None]
+    m = np.arange(NPOL)
+    cosm, sinm = np.cos(np.outer(m, phi)), np.sin(np.outer(m, phi))
+    shape = (radius.shape[0], len(theta), len(phi))
+    poten, fr, ftheta, fphi = np.zeros(shape), np.zeros(shape), np.zeros(shape), np.zeros(shape)
     for n in range(1, NPOL):
-        suma, sumatheta, sumaphi = 0, 0, 0
-        for m in range(0, n + 1):
-
-            suma += P[n, m, ntheta] * \
-                (g[n, m] * np.cos(m * phi) + h[n, m] * np.sin(m * phi))
-            
-            sumatheta += derivP[n, m, ntheta] * \
-                (g[n, m] * np.cos(m * phi) + h[n, m] * np.sin(m * phi))
-            
-            sumaphi += m * P[n, m, ntheta] * \
-                (- g[n, m] * np.sin(m * phi) + h[n, m] * np.cos(m * phi))
-            
-        poten += suma * (1 / radius) ** (n + 1)
-        fr += suma * (n + 1) * (1 / radius) ** (n + 2)
-        ftheta += - sumatheta * (1 / radius) ** (n + 2)
-        fphi += - sumaphi * (1 / radius) ** (n + 2) / np.sin(theta)
+        # Angular sums over the order m (matrices of dimension Ntheta x Nphi)
+        cosine = g[n, :NPOL, None] * cosm + h[n, :NPOL, None] * sinm
+        sine = m[:, None] * (- g[n, :NPOL, None] * sinm + h[n, :NPOL, None] * cosm)
+        suma = P[n, :NPOL, :].T @ cosine
+        sumatheta = derivP[n, :NPOL, :].T @ cosine
+        sumaphi = P[n, :NPOL, :].T @ sine
+        if external:
+            poten += suma * radius ** n
+            fr += - suma * n * radius ** (n - 1)
+            ftheta += - sumatheta * radius ** (n - 1)
+            fphi += - sumaphi * radius ** (n - 1) / np.sin(theta)[:, None]
+        else:
+            poten += suma * (1 / radius) ** (n + 1)
+            fr += suma * (n + 1) * (1 / radius) ** (n + 2)
+            ftheta += - sumatheta * (1 / radius) ** (n + 2)
+            fphi += - sumaphi * (1 / radius) ** (n + 2) / np.sin(theta)[:, None]
     return poten / const, fr / const, ftheta / const, fphi / const
 
 # ---------------------------------------------------------------------------
-# This is exactly the same function as potentialfunction but for external
-# sources, as the sum slightly varies in the radial direction and thus in 
-# all derivatives.
+# This function adds the internal and (if NPOL_EXT != 0) external fields and
+# also returns the modulus. All arrays have dimension [Nr, Ntheta, Nphi].
 # ---------------------------------------------------------------------------
-def potentialfunctionexternal(radius, 
-                              ntheta, 
-                              phi, 
-                              theta, 
-                              NPOL_EXT,
-                              P, 
-                              derivP, 
-                              const, 
-                              G, 
-                              H):
-    poten, fr, ftheta, fphi = 0, 0, 0, 0
-    for n in range(1, NPOL_EXT):
-        suma, sumatheta, sumaphi = 0, 0, 0
-        for m in range(0, n + 1):
-
-            suma += P[n, m, ntheta] * \
-                  (G[n, m] * np.cos(m * phi) + H[n, m] * np.sin(m * phi))
-            
-            sumatheta += derivP[n, m, ntheta] * \
-                  (G[n, m] * np.cos(m * phi) + H[n, m] * np.sin(m * phi))
-            
-            sumaphi += m * P[n, m, ntheta] * \
-                  (- G[n, m] * np.sin(m * phi) + H[n, m] * np.cos(m * phi))
-            
-        poten += suma * radius ** n
-        fr += - suma * n * radius ** (n - 1)
-        ftheta += - sumatheta * radius ** (n - 1)
-        fphi += - sumaphi * radius ** (n - 1) / np.sin(theta)
-    return poten / const, fr / const, ftheta / const, fphi / const
+def totalfield(radius, 
+               theta, 
+               phi, 
+               NPOL, 
+               NPOL_EXT, 
+               P, 
+               derivP, 
+               const, 
+               g, 
+               h, 
+               G, 
+               H):
+    potential, fieldr, fieldtheta, fieldphi = \
+        potentialfunction(radius, theta, phi, NPOL, P, derivP, const, g, h)
+    if NPOL_EXT != 0:
+        external = potentialfunction(radius, theta, phi, NPOL_EXT, P, derivP, const, G, H, external=True)
+        potential, fieldr, fieldtheta, fieldphi = potential + external[0], fieldr + external[1], \
+            fieldtheta + external[2], fieldphi + external[3]
+    fieldmod = np.sqrt(fieldr ** 2 + fieldtheta ** 2 + fieldphi ** 2)
+    return potential, fieldr, fieldtheta, fieldphi, fieldmod
 # ---------------------------------------------------------------------------

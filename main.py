@@ -1,43 +1,96 @@
 # ---------------------------------------------------------------------------
 # main.py has all the inputs to produce the planetary magentic field plots.
 # You only need to use the command:
-# python main.py
-# or run it in any python IDE/code editor.
+# python main.py --planet Jupiter_2021
+# (see python main.py --help for the planet, year, radius and multipole
+# options) or run it in any python IDE/code editor.
 # You only need to play with the first 50ish lines, but feel free to tweak
 # and try, probably there are some improvements to be made.
 #----------------------------------------------------------------------------
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import reader, schmidt, saveoutput, saveplots, lowes_spec, magnitudes
 #----------------------------------------------------------------------------
-# Grid resolution
-Ntheta = 100     # Latitudinal points (North-South direction)
-Nphi = 2*Ntheta  # Longitudial points (East-West direction)
+# Grid resolution (the latitudinal points are chosen with --ntheta below)
 Nr = 1           # Radial points (change only to generate 3D output)
 
-# Radius considered in the map plot, and name of the corresponding images 
+# The planet, year, radius and multipoles are chosen from the terminal, e.g.:
+# python main.py --planet Earth --year 1950 --rc 0.83
+# python main.py --planet Jupiter_2021 --nmax 18 --no-external
+# Without arguments the defaults below are used (Earth 2020 at r = 1). Use
+# python main.py --help to see all the options.
+parser = argparse.ArgumentParser(
+    description="Planetary magnetic field maps",
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog="examples:\n"
+           "  python main.py\n"
+           "  python main.py --planet Earth --year 2020 --rc 0.55\n"
+           "  python main.py --planet Jupiter --rc 0.85\n"
+           "  python main.py --planet Jupiter_2021 --nmax 18 --no-external\n"
+           "  python main.py --planet Saturn --rc 1.2\n"
+           "  python main.py --planet Mercury --no-external\n"
+           "  python main.py --planet Ganymede\n"
+           "  python main.py --planet Jupiter_2021 --nmax 18 --ntheta 300\n"
+           "  python main.py --planet Jupiter_2021 --title\n"
+           "  python main.py --planet Earth --year 1950 --title \"Earth 1950\"\n"
+           "  python main.py --planet Saturn --title '$\\mathrm{Saturn \\, (Cassini)}$'\n"
+           "\n"
+           "full examples (all the options):\n"
+           "  python main.py --planet Earth --year 1980 --rc 0.55 --nmax 8 --ntheta 200 "
+           "--title '$\\mathrm{Earth \\, 1980 \\, (n \\leq 8)}$'\n"
+           "  python main.py --planet Jupiter_2021 --rc 0.85 --nmax 18 --no-external --ntheta 300 "
+           "--title '$\\mathrm{Jupiter \\, (JRM33, \\, n \\leq 18)}$'\n"
+           "  python main.py --planet Mercury --rc 1.0 --nmax 3 --no-external --ntheta 150 --title")
+# Planet (or satellite) to choose. Raw data is located in folder data/
+parser.add_argument("--planet", default="Earth", choices=reader.PLANET_NAMES,
+                    help="planet or satellite (default: Earth)")
+# Only Earth has a table with many years (IGRF): 1900, 1905, ..., 2020
+parser.add_argument("--year", type=int, choices=reader.EARTH_YEARS, metavar="YEAR",
+                    help="year of the Earth model, 1900, 1905, ..., 2020 (default: 2020)")
+# Radius considered in the map plot, and name of the corresponding images.
 # This should be the actual radius in kilometers (6371.2/72492 for
 # Earth/Jupiter), but we renormalize to 1, since r/a is what matters.
-rc = 1.0
+parser.add_argument("--rc", type=float, default=1.0,
+                    help="radius in planetary radii (default: 1.0)")
+# Maximum degree of the multipoles to include (None uses all the table, except
+# for Jupiter_2021, which uses 13, as the paper says it is reliable up to 13
+# and useful up to 18) and switch to remove the external field G and H
+# coefficients (only for Jupiter_2021 and Mercury).
+parser.add_argument("--nmax", type=int, default=None,
+                    help="maximum multipole degree (default: the planet's default)")
+parser.add_argument("--no-external", dest="external", action="store_false",
+                    help="do not include the external field (only for Jupiter_2021 and Mercury)")
+# Switch to show a title on top of the plots. Without TEXT the planet name is
+# used (with the year for Earth), otherwise TEXT (LaTeX math works, e.g. 
+# '$\mathrm{Jupiter}$', with single quotes so the terminal keeps the dollars)
+parser.add_argument("--title", nargs="?", const="", default=None, metavar="TEXT",
+                    help="show a title on the plots: the planet name, or TEXT if given "
+                         "(default: no title)")
+# Grid resolution: latitudinal points (North-South direction). The 
+# longitudinal points (East-West direction) are twice as many
+parser.add_argument("--ntheta", type=int, default=100, metavar="N",
+                    help="latitudinal grid points, the longitudinal ones are 2N "
+                         "(default: 100)")
+args = parser.parse_args()
+if args.ntheta < 3: parser.error("--ntheta must be at least 3")
+
+planet, rc, nmax, external = args.planet, args.rc, args.nmax, args.external
+Ntheta = args.ntheta  # Latitudinal points (North-South direction)
+Nphi = 2*Ntheta       # Longitudial points (East-West direction)
+if planet == "Earth":
+    year = 2020 if args.year is None else args.year
+    planet_name = r"$\mathrm{Earth \, " + str(year) + "}$"
+elif args.year is not None:
+    parser.error("--year can only be used with --planet Earth")
+else:
+    year, planet_name = None, reader.PLANET_NAMES[planet]
+show_title = args.title is not None
+if args.title: planet_name = args.title
 
 # String used for naming the output files
 rc_file = '%.2f'%rc
-rc_file = rc_file.replace(".","_") 
-
-# Planet (or satellite) to choose. Raw data is located in folder data/
-planet, planet_name, year = "My_own", r"$\mathrm{Jupiter \, dipole}$", 2021
-# planet, planet_name = "Jupiter", r"$\mathrm{Jupiter}$"
-# planet, planet_name = "Jupiter_2021", r"$\mathrm{Jupiter \, \, 2021}$"
-# planet, planet_name = "Saturn", r"$\mathrm{Saturn}$"
-# planet, planet_name = "Neptune", r"$\mathrm{Neptune}$"
-# planet, planet_name = "Uranus", r"$\mathrm{Uranus}$"
-# planet, planet_name = "Mercury", r"$\mathrm{Mercury}$"
-# planet, planet_name = "Ganymede", r"$\mathrm{Ganymede}$"
-# planet, planet_name = "My_own", r"$\mathrm{My \, \, own}$"
-# You can choose either Earth, Jupiter, Jupiter_2021, Saturn, Neptune, Uranus,
-# Mercury and Ganymede or My_own. Anything else will make the code stop.  If 
-# you choose Earth, you also need to choose a year, which can only be: 1900, 
-# 1905, 1910, ..., to 2020.
+rc_file = rc_file.replace(".","_")
 
 # Switch to print the Brms and Bmax values in the terminal
 print_bcomponents = True 
@@ -62,7 +115,7 @@ ccrs_library = True
 # not installed this library
 
 # Switch to save the Lowes spectrum for the given radius
-lowes = False
+lowes = True
 # Switch to save the Lowes spectrum for a number of radii
 multiple_lowes_r, lowes_radii = False, np.array([1.20,1.15,1.10,1.05,1.00,0.95,0.90,0.85,0.80])
 # np.array([1.20,1.15,1.10,1.05,1.00,0.95,0.90,0.85,0.80])
@@ -86,39 +139,9 @@ filecvs, filevtu = False, False
 
 #----------------------------------------------------------------------------
 # Depending on the planet you choose, the data will have different 
-# multipole definition and will be normalized in nT or G.
-# Constants const are used to go from nanotesla to gauss (all plots have gauss
-# as main units). This and the total 
-if planet=="Earth":
-    NPOL,NPOL_EXT=14,0
-    const=1e5  # To 
-elif planet=="Jupiter":
-    NPOL,NPOL_EXT=11,0
-    const=1e5
-elif planet=="Jupiter_2021":
-    NPOL,NPOL_EXT=31,2
-    const=1e5
-elif planet=="Saturn":
-    NPOL,NPOL_EXT=7,0
-    const=1e5
-elif planet=="Uranus":
-    NPOL,NPOL_EXT=4,0
-    const=1      # Uranus and Neptune coefficients are already in Gauss 
-elif planet=="Neptune":
-    NPOL,NPOL_EXT=4,0
-    const=1
-elif planet=="Mercury":
-    NPOL,NPOL_EXT=4,2
-    const=1e5
-elif planet=="Ganymede":
-    NPOL,NPOL_EXT=3,0
-    const=1e5
-elif planet=="My_own":
-    NPOL,NPOL_EXT=7,0
-    const=1e5
-else:
-    print("There is no option for " + planet + " (maybe you made a typo)")
-    raise SystemExit
+# multipole definition and will be normalized in nT or G. The constant const 
+# is used to go from nanotesla to gauss (all plots have gauss as main units).
+NPOL, NPOL_EXT, const = reader.planet_settings(planet, nmax, external)
 
 #----------------------------------------------------------------------------
 # The following function reads the g's and h's constants and puts them 
@@ -140,51 +163,23 @@ P, derivP = schmidt.Schmidtcoefficients(NPOL, Ntheta, theta, K, S)
 
 #----------------------------------------------------------------------------
 
-# Initialize all components of the magnetic field (spherical, cartesian and modulus)
-potential, potential_EXT = np.zeros([Nr, Ntheta, Nphi]), np.zeros([Nr, Ntheta, Nphi])
-fieldr, fieldr_EXT = np.zeros([Nr, Ntheta, Nphi]), np.zeros([Nr, Ntheta, Nphi])
-fieldtheta, fieldtheta_EXT = np.zeros([Nr, Ntheta, Nphi]), np.zeros([Nr, Ntheta, Nphi])
-fieldphi, fieldphi_EXT = np.zeros([Nr, Ntheta, Nphi]), np.zeros([Nr, Ntheta, Nphi])
-fieldmod = np.zeros([Nr, Ntheta, Nphi])
-fieldx = np.zeros([Nr, Ntheta, Nphi])
-fieldy = np.zeros([Nr, Ntheta, Nphi])
-fieldz = np.zeros([Nr, Ntheta, Nphi])
-
 print("------------------------------------------------------------")
 print("Obtaining the magnetic field potential and components")
-# Main loop (for all r, theta phi) which obtains the potential and field components
-for j in range(0, Ntheta):
-    for k in range(0, Nphi):
-        potential[:, j, k], fieldr[:, j, k], fieldtheta[:, j, k], fieldphi[:, j, k] = \
-            schmidt.potentialfunction(radius[:], j, phi[k], theta[j], NPOL, P, derivP, const, g, h)
-        if NPOL_EXT != 0:
-            potential_EXT[:, j, k], fieldr_EXT[:, j, k], fieldtheta_EXT[:, j, k], fieldphi_EXT[:, j, k] = \
-                schmidt.potentialfunctionexternal(radius[:], j, phi[k], theta[j], NPOL_EXT, P, derivP, const, G, H)
-            
-            potential[:, j, k] += potential_EXT[:, j, k]
-            fieldr[:, j, k] += fieldr_EXT[:, j, k]
-            fieldtheta[:, j, k] += fieldtheta_EXT[:, j, k]
-            fieldphi[:, j, k] += fieldphi_EXT[:, j, k]
+# Potential and field components in all the grid, dimension [Nr, Ntheta, Nphi]
+potential, fieldr, fieldtheta, fieldphi, fieldmod = \
+    schmidt.totalfield(radius, theta, phi, NPOL, NPOL_EXT, P, derivP, const, g, h, G, H)
 
-        fieldmod[:, j, k] = np.sqrt(fieldr[:, j, k] ** 2 +  \
-                                    fieldtheta[:, j, k] ** 2 +  \
-                                    fieldphi[:, j, k] ** 2)
+# Cartesian components of the magnetic field
+sintheta, costheta = np.sin(theta)[None, :, None], np.cos(theta)[None, :, None]
+sinphi, cosphi = np.sin(phi)[None, None, :], np.cos(phi)[None, None, :]
+fieldx = cosphi * sintheta * fieldr + cosphi * costheta * fieldtheta - sinphi * fieldphi
+fieldy = sinphi * sintheta * fieldr + sinphi * costheta * fieldtheta + cosphi * fieldphi
+fieldz = costheta * fieldr - sintheta * fieldtheta
 
-        fieldx[:, j, k] = np.cos(phi[k]) * np.sin(theta[j]) * fieldr[:, j, k] + \
-                          np.cos(phi[k]) * np.cos(theta[j]) * fieldtheta[:, j, k] - \
-                          np.sin(phi[j]) * fieldphi[:, j, k]
-        
-        fieldy[:, j, k] = np.sin(phi[k]) * np.sin(theta[j]) * fieldr[:, j, k] + \
-                          np.sin(phi[k]) * np.cos(theta[j]) * fieldtheta[:, j, k] + \
-                          np.cos(phi[j]) * fieldphi[:, j, k]
-        
-        fieldz[:, j, k] = np.cos(theta[j]) * fieldr[:, j, k] - \
-                          np.sin(theta[j]) * fieldtheta[:, j, k]
-        
-brms = np.zeros([Ntheta, Nphi])
-for j in range(1, Ntheta - 1):
-    brms[j, :] = fieldmod[0, j, :] * np.sin(theta[j])
-brms = np.sum(brms)/Nphi/np.sum(np.sin(theta))
+# Root mean square of |B| over the sphere r = radius[0] (the last phi point is
+# the same as the first one, so it is not included)
+weights = np.sin(theta)[:, None] * np.ones(Nphi - 1)
+brms = np.sqrt(np.sum(weights * fieldmod[0, :, :-1] ** 2) / np.sum(weights))
 if print_bcomponents:
     print("Brms: " + str(brms))
     print("Bmax: " + str(np.max(fieldmod)))
@@ -225,7 +220,9 @@ plt.rcParams['figure.figsize'] = (14, 7)
 plt.rcParams['font.size'] = 25
 plt.rcParams['lines.linewidth'] = 1
 plt.rcParams["figure.autolayout"] = True
-#plt.rcParams['text.usetex'] = True
+# LaTeX fonts (usetex=False uses the Computer Modern fonts of matplotlib,
+# which is faster and does not need LaTeX installed)
+saveplots.latex_fonts(usetex=True)
 
 print("------------------------------------------------------------")
 print("Saving plots for " + planet + " r = " + str(rc))
@@ -246,7 +243,7 @@ if planeproj: saveplots.plot_all(planet,
                                  ccrs_library=ccrs_library, 
                                  plane=True, 
                                  Mollweide=False,
-                                 show_title=False,
+                                 show_title=show_title,
                                  show_colorbar_title=True)
 
 # Saves Mollweide projection of the magnitudes
@@ -264,7 +261,7 @@ if mollweideproj: saveplots.plot_all(planet,
                                      ccrs_library=ccrs_library, 
                                      plane=False, 
                                      Mollweide=True,
-                                     show_title=False,
+                                     show_title=show_title,
                                      show_colorbar_title=True)
 
 # Calculates the curl, divergence, and curvature and plots them
@@ -287,6 +284,9 @@ if plot_magnitudes: magnitudes.printMagnitudes(planet,
 # Obtain the Lowes spectrum for a the given plotted radius and plot it
 if lowes:
     Rn = lowes_spec.lowes_spec(NPOL, rc, g, h)
+    fdip = Rn[1]/np.sum(Rn)
+    print("fdip at rc " + str(rc))
+    print(fdip)
     lowes_spec.plot_lowes(planet, rc, rc_file, Rn)
 
 # Obtian many Lowes spectrum ad different radii and plot them
@@ -294,10 +294,13 @@ if multiple_lowes_r:
     Rn = np.zeros([len(lowes_radii), NPOL])
     for r in range(0,len(lowes_radii)):
         Rn[r,:] = lowes_spec.lowes_spec(NPOL, lowes_radii[r], g, h)
+        fdip = Rn[r,1]/np.sum(Rn[r,:])
+        print("fdip at rc " + str(lowes_radii[r]))
+        print(fdip)
     lowes_spec.plot_multiple_lowes(planet, lowes_radii, Rn)
 
 print("------------------------------------------------------------")
-print("---  Created by: A.Elias, The IMAGINE PROJECT, ICE-CSIC  ---")
+print("------------  Created by: Albert Elias-López  --------------")
 print("------------------------------------------------------------")
 
 #----------------------------------------------------------------------------
