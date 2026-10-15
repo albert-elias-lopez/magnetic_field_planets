@@ -5,15 +5,14 @@
 # as they are constructed from a potential (in a current-free zone).
 #------------------------------------------------------------------------------------
 
-from statistics import mean
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from matplotlib import cm
+import matplotlib
 
-cmap1 = cm.get_cmap('RdBu_r', 255)
-cmap2 = cm.get_cmap('inferno', 255)
-#cmap2 = cm.get_cmap('YlGn', 255)
+cmap1 = matplotlib.colormaps['RdBu_r'].resampled(255)
+cmap2 = matplotlib.colormaps['inferno'].resampled(255)
+#cmap2 = matplotlib.colormaps['YlGn'].resampled(255)
 
 def printMagnitudes(planet,            # String for the directory name
                     Ntheta,            # Number of latitudinal points
@@ -100,10 +99,7 @@ def printMagnitudes(planet,            # String for the directory name
                 derivphifieldphi[j, k] = .5 * (fieldphi[i, j, k + 1] - fieldphi[i, j, k - 1]) / h_phi
                 derivphidirectionphi[j, k] = .5 * (directionphi[i, j, k + 1] - directionphi[i, j, k - 1]) / h_phi
             
-            divergence[j, k] = 0.5/rc**2 * ( (rc + dr)**2*fieldr[i+1,j,1] - (rc - dr)**2*fieldr[i-1,j,1] ) / h_r + \
-                        0.5/(rc*np.sin(theta[j])) * ( fieldtheta[i,j+1,k]*np.sin(theta[j+1]) - fieldtheta[i,j-1,k]*np.sin(theta[j-1]) )/ h_theta + \
-                        derivphifieldphi[j, k] / rc / np.sin(theta[j])
-            
+
 #------------------------------------------------------------------------------------
     curlr = np.zeros([Ntheta, Nphi])
     curltheta = np.zeros([Ntheta, Nphi])
@@ -175,10 +171,10 @@ def printMagnitudes(planet,            # String for the directory name
     Phi, Theta = np.meshgrid(360 * (1 - phi / 2 / np.pi), 
                              - 180 * theta / np.pi + 90)
     names = [r'$\nabla \cdot B h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
-             r'$|\nabla x B|h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
-             r'$(\nabla x B)_r h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
-             r'$(\nabla x B)_\theta h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
-             r'$(\nabla x B)_\phi h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
+             r'$|\nabla \times B|h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
+             r'$(\nabla \times B)_r h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
+             r'$(\nabla \times B)_\theta h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
+             r'$(\nabla \times B)_\phi h$ (Gauss) at $r =$' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$', 
              r'$|\kappa| \, \mathrm{(1/R_J) \, at} \, r = \, $' + f'${{{rc:.2f}}}$' + r'$\, \mathrm{R_P}$']
     files = [planet+ '_r_' + rc_file +'_div',
              planet+ '_r_' + rc_file+'_curl_mod',
@@ -222,7 +218,8 @@ def printMagnitudes(planet,            # String for the directory name
                              cmap=map,
                              vmin=vmin,
                              vmax=vmax,
-                             levels=30)
+                             levels=30,
+                             extend='both')
             else:
                 plt.contourf(- Phi + 180,
                              Theta,
@@ -230,7 +227,8 @@ def printMagnitudes(planet,            # String for the directory name
                              cmap=map,
                              vmin=vmin,
                              vmax=vmax,
-                             levels=30)
+                             levels=30,
+                             extend='both')
             plt.gca().invert_xaxis()
             cbar = plt.colorbar(orientation="vertical",
                                 pad=.01,
@@ -239,10 +237,8 @@ def printMagnitudes(planet,            # String for the directory name
             cbar.set_label(names[index])
             cbar.ax.tick_params(labelsize=11)
             print("Saving " + planet + "/" + files[index] + '.png')
-            try: plt.savefig(planet + "/" + files[index] + '.png')
-            except:
-                os.mkdir(planet)
-                plt.savefig(planet + "/" + files[index] + '.png')
+            os.makedirs(planet, exist_ok=True)
+            plt.savefig(planet + "/" + files[index] + '.png')
     if Mollweide:
         import cartopy.crs as ccrs
         for index, magnitude in enumerate(magnitudes):
@@ -264,6 +260,7 @@ def printMagnitudes(planet,            # String for the directory name
                             levels=30,
                             vmin=vmin,
                             vmax=vmax,
+                            extend='both',
                             transform=ccrs.PlateCarree())
                 ax.coastlines()
             else:
@@ -274,6 +271,7 @@ def printMagnitudes(planet,            # String for the directory name
                             levels=30,
                             vmin=vmin,
                             vmax=vmax,
+                            extend='both',
                             transform=ccrs.PlateCarree())
             cbar = plt.colorbar(orientation="vertical",
                                 pad=.01,
@@ -282,8 +280,6 @@ def printMagnitudes(planet,            # String for the directory name
             cbar.set_label(names[index])
             cbar.ax.tick_params(labelsize=18)
             print("Saving " + planet + "/" + files[index] + '_Mollweide.png')
-            try: plt.savefig(planet + "/" + files[index] + '_Mollweide.png')
-            except:
-                os.mkdir(planet)
-                plt.savefig(planet + "/" + files[index] + '_Mollweide.png')
+            os.makedirs(planet, exist_ok=True)
+            plt.savefig(planet + "/" + files[index] + '_Mollweide.png')
 #------------------------------------------------------------------------------------
